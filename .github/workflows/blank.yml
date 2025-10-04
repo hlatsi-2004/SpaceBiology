@@ -1,93 +1,285 @@
-import javax.swing.*;
-import java.awt.*;
-import java.util.*;
+import React, { useState, useMemo } from 'react';
 
-// Class representing a single publication
-class Publication {
-    String title;
-    String introduction;
-    String results;
-    String conclusion;
+// Single-file React dashboard prototype for the NASA Bioscience publications challenge.
+// This file is written as a single React component that can be used in a Create React App
+// or any framework that accepts a single-file component export. It contains:
+// - sample publications array (replace with the real 608-item dataset)
+// - lightweight extractive summarizer (sentence scoring by keyword overlap)
+// - search, filter, and tag facets
+// - a simple knowledge-graph-like visualization (SVG force-lite layout)
+// - exportable CSV of filtered results
 
-    public Publication(String title, String introduction, String results, String conclusion) {
-        this.title = title;
-        this.introduction = introduction;
-        this.results = results;
-        this.conclusion = conclusion;
-    }
+// NOTE: This is a prototype intended to be extended with:
+// - a backend that provides embeddings + semantic search (OpenAI / other LLMs)
+// - a proper knowledge graph store (RDF/Neo4j/Grakn) for richer queries
+// - automatic NER / relation extraction pipelines for high-quality graph edges
 
-    // Simple summary: first sentence from Results and Conclusion
-    public String summarize() {
-        String resultSummary = results.split("\\.")[0];
-        String conclusionSummary = conclusion.split("\\.")[0];
-        return "Summary: " + resultSummary + ". " + conclusionSummary + ".";
-    }
+// ======= SAMPLE DATA (replace with real dataset) =======
+const SAMPLE_PUBS = [
+  {
+    id: 'P-001',
+    title: 'Plant Growth on the ISS: Root Responses under Microgravity',
+    authors: ['A. Lee', 'M. Rivera'],
+    year: 2019,
+    sections: {
+      Introduction:
+        'Plants sense gravity and reorient roots in 1g; in microgravity this process is perturbed. This study explores root architecture changes aboard the ISS.',
+      Results:
+        'Seedlings grown on the ISS showed a 35% increase in lateral root density and a reduced primary root elongation rate. Gene expression showed upregulation of auxin transporters.',
+      Conclusion:
+        'Microgravity alters root architecture via auxin redistribution; results inform growth-chamber design for lunar agriculture.'
+    },
+    keywords: ['plants', 'microgravity', 'roots', 'auxin']
+  },
+  {
+    id: 'P-002',
+    title: 'Radiation Effects on Human T-Cell Activation',
+    authors: ['J. Patel'],
+    year: 2020,
+    sections: {
+      Introduction:
+        'Ionizing radiation in space can modulate immune responses. We measured T-cell activation after low-dose radiation analogous to a Mars transit.',
+      Results:
+        'CD4+ T-cells showed reduced proliferation (20% lower) and altered cytokine profile with decreased IL-2 production.',
+      Conclusion:
+        'Findings indicate immune dysregulation under chronic low-dose radiation; countermeasures should be prioritized.'
+    },
+    keywords: ['radiation', 'immune', 'T-cells', 'human']
+  },
+  {
+    id: 'P-003',
+    title: 'Microbial Biofilm Formation on Spacecraft Materials',
+    authors: ['S. Gomez', 'L. Huang'],
+    year: 2018,
+    sections: {
+      Introduction: 'Biofilms threaten hardware and crew health in closed habitats. This study tests biofilm formation on aluminum and polymers in microgravity analogs.',
+      Results:
+        'Biofilms formed faster on polymer surfaces with 2x biomass after 7 days. Microgravity analog produced thicker EPS layers.',
+      Conclusion: 'Material selection and surface treatment are critical for long-duration habitats.'
+    },
+    keywords: ['microbial', 'biofilm', 'materials']
+  }
+];
 
-    // Needed for JList display
-    @Override
-    public String toString() {
-        return title;
-    }
+// ========== Utilities ===========
+function tokenizeSentences(text = '') {
+  // Simple sentence splitter (naive)
+  return text.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
 }
 
-// Main GUI class
-public class SpaceBiology {
+function scoreSentence(sentence, queryTokens) {
+  const s = sentence.toLowerCase();
+  let score = 0;
+  for (const t of queryTokens) if (t && s.includes(t)) score += 1;
+  // length penalty/bonus
+  score += Math.min(1, s.length / 100);
+  return score;
+}
 
-    private JFrame frame;
-    private JList<Publication> publicationList;
-    private JTextArea summaryArea;
+function extractiveSummarize(publication, query = '') {
+  // Concatenate Results + Conclusion as preferred extractive source, falling back to Introduction.
+  const sourceText = [publication.sections.Results, publication.sections.Conclusion, publication.sections.Introduction]
+    .filter(Boolean)
+    .join(' ');
+  const sentences = tokenizeSentences(sourceText);
+  const queryTokens = query
+    .toLowerCase()
+    .split(/\W+/)
+    .filter(Boolean);
+  // score sentences
+  const scored = sentences.map(sent => ({ sent, score: scoreSentence(sent, queryTokens) }));
+  scored.sort((a, b) => b.score - a.score);
+  // pick top 2 sentences
+  return scored.slice(0, 2).map(x => x.sent).join(' ');
+}
 
-    public SpaceBiology(List<Publication> publications) {
-        frame = new JFrame("NASA Space Biology Dashboard");
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setSize(700, 400);
+function simpleKeywordSearch(pub, q) {
+  if (!q) return true;
+  const t = q.toLowerCase();
+  if (pub.title.toLowerCase().includes(t)) return true;
+  for (const kw of pub.keywords) if (kw.toLowerCase().includes(t)) return true;
+  // search in results/conclusion
+  const joined = Object.values(pub.sections).join(' ').toLowerCase();
+  if (joined.includes(t)) return true;
+  return false;
+}
 
-        // Left panel: list of publications (using Vector to avoid issues)
-        publicationList = new JList<>(new Vector<>(publications));
-        JScrollPane listScrollPane = new JScrollPane(publicationList);
+// ====== Tiny in-memory "entity extraction" for demo knowledge graph ======
+function extractEntities(pub) {
+  // This is deliberately simple. Replace with a proper NER pipeline.
+  const tokens = new Set();
+  for (const kw of pub.keywords) tokens.add(kw);
+  // look for common organism words and experiment concepts in text
+  const text = Object.values(pub.sections).join(' ').toLowerCase();
+  const candidates = ['plant', 'plants', 'microgravity', 'radiation', 't-cell', 't-cells', 'biofilm', 'microbial', 'human', 'roots', 'auxin', 'aluminum', 'polymer', 'immune'];
+  for (const c of candidates) if (text.includes(c)) tokens.add(c);
+  return Array.from(tokens);
+}
 
-        // Right panel: summary display
-        summaryArea = new JTextArea();
-        summaryArea.setEditable(false);
-        summaryArea.setLineWrap(true);
-        summaryArea.setWrapStyleWord(true);
-        JScrollPane summaryScrollPane = new JScrollPane(summaryArea);
+// Simple SVG-based graph layout (radial)
+function GraphSVG({ nodes, links, width = 600, height = 300 }) {
+  const cx = width / 2;
+  const cy = height / 2;
+  const radius = Math.min(width, height) / 3;
+  const angleStep = (2 * Math.PI) / Math.max(1, nodes.length);
+  return (
+    <svg width={width} height={height} style={{ border: '1px solid #eee', borderRadius: 8 }}>
+      {/* center */}
+      <circle cx={cx} cy={cy} r={40} fill="#0ea5e9" opacity={0.12} />
+      <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" style={{ fontSize: 12 }}>
+        Publications
+      </text>
+      {nodes.map((n, i) => {
+        const a = i * angleStep;
+        const x = cx + Math.cos(a) * radius;
+        const y = cy + Math.sin(a) * radius;
+        return (
+          <g key={n.id}>
+            {/* link */}
+            <line x1={cx} y1={cy} x2={x} y2={y} stroke="#999" strokeWidth={1} />
+            {/* node */}
+            <circle cx={x} cy={y} r={18} fill="#f97316" />
+            <text x={x} y={y} textAnchor="middle" dominantBaseline="central" style={{ fontSize: 10, pointerEvents: 'none' }}>
+              {n.label}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
 
-        // Split pane for left and right panels
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, listScrollPane, summaryScrollPane);
-        splitPane.setDividerLocation(300);
+// ======= Main Dashboard Component =======
+export default function NasaBioscienceDashboard() {
+  const [query, setQuery] = useState('');
+  const [yearFrom, setYearFrom] = useState(2015);
+  const [yearTo, setYearTo] = useState(2025);
+  const [selectedPub, setSelectedPub] = useState(null);
+  const [showGraph, setShowGraph] = useState(true);
+  const pubs = SAMPLE_PUBS;
 
-        frame.setLayout(new BorderLayout());
-        frame.add(splitPane, BorderLayout.CENTER);
+  const filtered = useMemo(() => {
+    return pubs.filter(p => p.year >= yearFrom && p.year <= yearTo && simpleKeywordSearch(p, query));
+  }, [pubs, yearFrom, yearTo, query]);
 
-        // Event: show summary when a publication is selected
-        publicationList.addListSelectionListener(e -> {
-            Publication selected = publicationList.getSelectedValue();
-            if (selected != null) {
-                summaryArea.setText(selected.summarize());
-            }
-        });
+  function handleExportCSV() {
+    const header = ['id', 'title', 'authors', 'year', 'keywords'].join(',') + '\n';
+    const rows = filtered.map(p => [p.id, '"' + p.title.replace(/"/g, '""') + '"', '"' + p.authors.join(';') + '"', p.year, '"' + p.keywords.join(';') + '"'].join(','));
+    const csv = header + rows.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'filtered_publications.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
-        frame.setVisible(true);
-    }
+  return (
+    <div className="p-4 max-w-6xl mx-auto font-sans">
+      <header className="mb-4">
+        <h1 className="text-2xl font-bold mb-1">NASA Bioscience Explorer (prototype)</h1>
+        <p className="text-sm text-gray-600">Interactive dashboard prototype — replace sample data with the NASA publications dataset and connect to an AI backend for richer summarization and semantic search.</p>
+      </header>
 
-    public static void main(String[] args) {
-        // Example publications
-        List<Publication> publications = new ArrayList<>();
-        publications.add(new Publication(
-                "Effect of Microgravity on Plant Growth",
-                "Introduction: Microgravity affects plant growth...",
-                "Results: Plants grew 20% slower in space...",
-                "Conclusion: Microgravity impacts plant physiology significantly..."
-        ));
-        publications.add(new Publication(
-                "Human Muscle Loss in Space",
-                "Introduction: Muscle atrophy occurs in astronauts...",
-                "Results: 15% muscle mass lost after 6 months...",
-                "Conclusion: Countermeasures like resistance exercise are necessary..."
-        ));
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className="col-span-2">
+          <input
+            className="w-full p-2 border rounded mb-2"
+            placeholder="Search titles, keywords, or results (try 'microgravity' or 'radiation')"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+          />
+          <div className="flex gap-2 items-center mb-2">
+            <label className="text-sm">Year from</label>
+            <input type="number" className="p-1 border rounded w-24" value={yearFrom} onChange={e => setYearFrom(Number(e.target.value))} />
+            <label className="text-sm">to</label>
+            <input type="number" className="p-1 border rounded w-24" value={yearTo} onChange={e => setYearTo(Number(e.target.value))} />
+            <button className="ml-auto px-3 py-1 rounded bg-sky-500 text-white" onClick={handleExportCSV}>Export CSV</button>
+          </div>
 
-        // Launch GUI on the Event Dispatch Thread
-        SwingUtilities.invokeLater(() -> new SpaceBiology(publications));
-    }
+          <div style={{ minHeight: 260 }} className="border rounded p-2 bg-white">
+            <h2 className="font-semibold">Results ({filtered.length})</h2>
+            <ul className="divide-y mt-2">
+              {filtered.map(p => (
+                <li key={p.id} className="py-2 flex justify-between items-start">
+                  <div onClick={() => setSelectedPub(p)} style={{ cursor: 'pointer' }}>
+                    <div className="font-medium">{p.title} <span className="text-xs text-gray-500">({p.year})</span></div>
+                    <div className="text-sm text-gray-600">{p.authors.join(', ')} • <span className="italic text-xs">{p.keywords.join(', ')}</span></div>
+                    <div className="text-sm text-gray-800 mt-1">Summary: {extractiveSummarize(p, query)}</div>
+                  </div>
+                  <div>
+                    <button className="px-2 py-1 border rounded text-sm" onClick={() => { navigator.clipboard.writeText(JSON.stringify(p)); alert('Publication JSON copied to clipboard'); }}>Copy JSON</button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        <aside className="p-2 border rounded">
+          <div className="mb-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Facets</h3>
+              <label className="text-sm flex items-center"><input type="checkbox" checked={showGraph} onChange={e => setShowGraph(e.target.checked)} className="mr-1" /> Graph</label>
+            </div>
+            <div className="text-sm text-gray-600 mt-2">Top keywords (from filtered set)</div>
+            <div className="mt-2 flex flex-wrap gap-1">
+              {Array.from(new Set(filtered.flatMap(p => p.keywords))).slice(0, 12).map(k => (
+                <button key={k} className="px-2 py-1 text-xs border rounded" onClick={() => setQuery(k)}>{k}</button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h4 className="font-medium">Selected publication</h4>
+            {selectedPub ? (
+              <div className="text-sm mt-2">
+                <div className="font-semibold">{selectedPub.title} <span className="text-xs text-gray-500">({selectedPub.id})</span></div>
+                <div className="text-xs text-gray-600">{selectedPub.authors.join(', ')} • {selectedPub.year}</div>
+                <div className="mt-2 text-sm"><strong>Extractive summary:</strong> {extractiveSummarize(selectedPub, query)}</div>
+                <details className="mt-2 text-xs">
+                  <summary className="cursor-pointer">Show full sections</summary>
+                  <div className="mt-1">
+                    {Object.entries(selectedPub.sections).map(([k, v]) => (
+                      <div key={k} className="mt-1">
+                        <strong>{k}:</strong>
+                        <div>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              </div>
+            ) : (
+              <div className="text-sm text-gray-500 mt-2">Click a result to view details and summary.</div>
+            )}
+          </div>
+        </aside>
+      </section>
+
+      {showGraph && (
+        <section className="mb-6">
+          <h3 className="font-semibold mb-2">Tiny Knowledge Graph (entities from filtered results)</h3>
+          <div className="overflow-auto">
+            <GraphSVG
+              width={900}
+              height={280}
+              nodes={filtered.flatMap(p => extractEntities(p)).map((label, i) => ({ id: 'n' + i, label }))}
+              links={[]}
+            />
+          </div>
+        </section>
+      )}
+
+      <footer className="text-xs text-gray-500">
+        Prototype — to finish this into a production-ready dashboard:
+        <ul className="list-disc ml-5">
+          <li>Import the full 608 publications JSON (or fetch from NASA repository) and store in a searchable index.</li>
+          <li>Run an NER + relation extraction pipeline (SpaCy / Stanza / HuggingFace) and populate a graph DB (Neo4j).</li>
+          <li>Compute embeddings (OpenAI, or local models) and build semantic search (FAISS, Milvus) for similarity queries.</li>
+          <li>Add server-side summarization using LLMs (summarize Results/Conclusion with citation linking).</li>
+        </ul>
+      </footer>
+    </div>
+  );
 }
