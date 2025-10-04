@@ -1,36 +1,93 @@
-# This is a basic workflow to help you get started with Actions
+import javax.swing.*;
+import java.awt.*;
+import java.util.*;
 
-name: CI
+// Class representing a single publication
+class Publication {
+    String title;
+    String introduction;
+    String results;
+    String conclusion;
 
-# Controls when the workflow will run
-on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    public Publication(String title, String introduction, String results, String conclusion) {
+        this.title = title;
+        this.introduction = introduction;
+        this.results = results;
+        this.conclusion = conclusion;
+    }
 
-  # Allows you to run this workflow manually from the Actions tab
-  workflow_dispatch:
+    // Simple summary: first sentence from Results and Conclusion
+    public String summarize() {
+        String resultSummary = results.split("\\.")[0];
+        String conclusionSummary = conclusion.split("\\.")[0];
+        return "Summary: " + resultSummary + ". " + conclusionSummary + ".";
+    }
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
-jobs:
-  # This workflow contains a single job called "build"
-  build:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-latest
+    // Needed for JList display
+    @Override
+    public String toString() {
+        return title;
+    }
+}
 
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
+// Main GUI class
+public class SpaceBiology {
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
+    private JFrame frame;
+    private JList<Publication> publicationList;
+    private JTextArea summaryArea;
 
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
-        run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+    public SpaceBiology(List<Publication> publications) {
+        frame = new JFrame("NASA Space Biology Dashboard");
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setSize(700, 400);
+
+        // Left panel: list of publications (using Vector to avoid issues)
+        publicationList = new JList<>(new Vector<>(publications));
+        JScrollPane listScrollPane = new JScrollPane(publicationList);
+
+        // Right panel: summary display
+        summaryArea = new JTextArea();
+        summaryArea.setEditable(false);
+        summaryArea.setLineWrap(true);
+        summaryArea.setWrapStyleWord(true);
+        JScrollPane summaryScrollPane = new JScrollPane(summaryArea);
+
+        // Split pane for left and right panels
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, listScrollPane, summaryScrollPane);
+        splitPane.setDividerLocation(300);
+
+        frame.setLayout(new BorderLayout());
+        frame.add(splitPane, BorderLayout.CENTER);
+
+        // Event: show summary when a publication is selected
+        publicationList.addListSelectionListener(e -> {
+            Publication selected = publicationList.getSelectedValue();
+            if (selected != null) {
+                summaryArea.setText(selected.summarize());
+            }
+        });
+
+        frame.setVisible(true);
+    }
+
+    public static void main(String[] args) {
+        // Example publications
+        List<Publication> publications = new ArrayList<>();
+        publications.add(new Publication(
+                "Effect of Microgravity on Plant Growth",
+                "Introduction: Microgravity affects plant growth...",
+                "Results: Plants grew 20% slower in space...",
+                "Conclusion: Microgravity impacts plant physiology significantly..."
+        ));
+        publications.add(new Publication(
+                "Human Muscle Loss in Space",
+                "Introduction: Muscle atrophy occurs in astronauts...",
+                "Results: 15% muscle mass lost after 6 months...",
+                "Conclusion: Countermeasures like resistance exercise are necessary..."
+        ));
+
+        // Launch GUI on the Event Dispatch Thread
+        SwingUtilities.invokeLater(() -> new SpaceBiology(publications));
+    }
+}
