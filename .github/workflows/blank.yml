@@ -1,8 +1,10 @@
+package com.mycompany.spacebiology;
+
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.*;
 import java.util.*;
 
-// Class representing a single publication
 class Publication {
     String title;
     String introduction;
@@ -16,49 +18,45 @@ class Publication {
         this.conclusion = conclusion;
     }
 
-    // Simple summary: first sentence from Results and Conclusion
     public String summarize() {
         String resultSummary = results.split("\\.")[0];
         String conclusionSummary = conclusion.split("\\.")[0];
         return "Summary: " + resultSummary + ". " + conclusionSummary + ".";
     }
 
-    // Needed for JList display
     @Override
     public String toString() {
         return title;
     }
 }
 
-// Main GUI class
-public class SpaceBiology {
+public class SpaceBiologyGUI {
 
     private JFrame frame;
     private JList<Publication> publicationList;
     private JTextArea summaryArea;
 
-    public SpaceBiology(List<Publication> publications) {
+    public SpaceBiologyGUI(List<Publication> publications) {
         frame = new JFrame("NASA Space Biology Dashboard");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setSize(700, 400);
+        frame.setSize(600, 400);
 
-        // Left panel: list of publications (using Vector to avoid issues)
-        publicationList = new JList<>(new Vector<>(publications));
+        // Left panel: list of publications
+        publicationList = new JList<>(publications.toArray(new Publication[0]));
         JScrollPane listScrollPane = new JScrollPane(publicationList);
 
-        // Right panel: summary display
+        // Right panel: summary
         summaryArea = new JTextArea();
         summaryArea.setEditable(false);
         summaryArea.setLineWrap(true);
         summaryArea.setWrapStyleWord(true);
         JScrollPane summaryScrollPane = new JScrollPane(summaryArea);
 
-        // Split pane for left and right panels
+        // Split pane
         JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, listScrollPane, summaryScrollPane);
-        splitPane.setDividerLocation(300);
+        splitPane.setDividerLocation(250);
 
-        frame.setLayout(new BorderLayout());
-        frame.add(splitPane, BorderLayout.CENTER);
+        frame.getContentPane().add(splitPane);
 
         // Event: show summary when a publication is selected
         publicationList.addListSelectionListener(e -> {
@@ -72,22 +70,21 @@ public class SpaceBiology {
     }
 
     public static void main(String[] args) {
-        // Example publications
         List<Publication> publications = new ArrayList<>();
         publications.add(new Publication(
-                "Effect of Microgravity on Plant Growth",
-                "Introduction: Microgravity affects plant growth...",
-                "Results: Plants grew 20% slower in space...",
-                "Conclusion: Microgravity impacts plant physiology significantly..."
+            "Effect of Microgravity on Plant Growth",
+            "Introduction: Microgravity affects plant growth...",
+            "Results: Plants grew 20% slower in space...",
+            "Conclusion: Microgravity impacts plant physiology significantly..."
         ));
         publications.add(new Publication(
-                "Human Muscle Loss in Space",
-                "Introduction: Muscle atrophy occurs in astronauts...",
-                "Results: 15% muscle mass lost after 6 months...",
-                "Conclusion: Countermeasures like resistance exercise are necessary..."
+            "Human Muscle Loss in Space",
+            "Introduction: Muscle atrophy occurs in astronauts...",
+            "Results: 15% muscle mass lost after 6 months...",
+            "Conclusion: Countermeasures like resistance exercise are necessary..."
         ));
 
-        // Launch GUI on the Event Dispatch Thread
-        SwingUtilities.invokeLater(() -> new SpaceBiology(publications));
+        SwingUtilities.invokeLater(() -> new SpaceBiologyGUI(publications));
     }
 }
+
