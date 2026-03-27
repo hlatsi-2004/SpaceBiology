@@ -1,8 +1,8 @@
 SpaceBiology 🧬🚀
 
-Enabling a new era of human space exploration by unlocking the knowledge from decades of NASA's biological research.
+Advancing human space exploration by consolidating and leveraging decades of NASA biological research.
 
-As humans prepare to revisit the Moon and journey to Mars, understanding the effects of spaceflight on biology is more critical than ever. NASA has been performing biology experiments in space for decades, generating a tremendous amount of information. This project aims to centralize, organize, and provide tools to analyze this data, making it accessible for the next generation of explorers and scientists.
+As humanity prepares to return to the Moon and embark on missions to Mars, understanding the effects of spaceflight on biological systems is increasingly important. NASA has conducted numerous biology experiments in space over the years, generating a vast amount of data. This project seeks to centralize, organize, and provide analytical tools for this information, making it accessible to researchers, scientists, and the next generation of space explorers.
 
  🎯 Project Goals
 
